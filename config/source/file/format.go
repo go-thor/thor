@@ -1,0 +1,15 @@
+package file
+
+import (
+	"strings"
+
+	"github.com/go-thor/thor/codec"
+)
+
+func format(p string, e codec.Coder) string {
+	parts := strings.Split(p, ".")
+	if len(parts) > 1 {
+		return parts[len(parts)-1]
+	}
+	return e.String()
+}
