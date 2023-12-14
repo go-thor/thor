@@ -1,0 +1,37 @@
+repos:
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: 3.2.2
+    hooks:
+      - id: commitizen
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.3.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.4.2
+    hooks:
+      - id: forbid-crlf
+      - id: remove-crlf
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v1.45.2
+    hooks:
+      - id: golangci-lint
+        name: golangci-lint
+        description: Fast linters runner for Go.
+        entry: golangci-lint run --fix --fast ./...
+        types: [go]
+        language: golang
+        pass_filenames: false
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-mod-tidy
+      - id: go-imports
+      - id: go-fmt
+      - id: go-generate

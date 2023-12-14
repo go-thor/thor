@@ -1,0 +1,21 @@
+run:
+  concurrency: 4
+  timeout: 2m
+  issues-exit-code: 1
+  tests: false
+  skip-dirs-use-default: true
+  skip-dirs:
+    - examples
+    - config
+    - docs
+    - swagger
+  skip-files:
+    - ".*_test.go"
+  allow-parallel-runners: true
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: true
+  path-prefix: ""
