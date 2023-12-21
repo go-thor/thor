@@ -2,8 +2,9 @@ package otlp
 
 import (
 	"context"
-	"google.golang.org/grpc"
 	"time"
+
+	"google.golang.org/grpc"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
@@ -29,7 +30,7 @@ func InitProvider(ctx context.Context, agentAddr string) (func(), error) {
 			semconv.ServiceNamespaceKey.String(build.Namespace),
 			semconv.ServiceNameKey.String(build.Name),
 			semconv.ServiceVersionKey.String(build.Version),
-			semconv.ServiceInstanceIDKey.String(build.ID),
+			semconv.ServiceInstanceIDKey.String(build.Instance),
 		),
 	)
 
