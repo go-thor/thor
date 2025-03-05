@@ -34,7 +34,10 @@ func (t *HTTPTransport) ListenAndServe(addr string, handler thor.HandlerFunc) er
 		if err := handler(ctx); err != nil {
 			fmt.Printf("Handler error: %v\n", err)
 		}
-		t.codec.EncodeStream(w, ctx.Response)
+		if err := t.codec.EncodeStream(w, ctx.Response); err != nil {
+			fmt.Printf("Encode error: %v\n", err)
+			return
+		}
 	})
 	return http.ListenAndServe(addr, nil)
 }

@@ -90,7 +90,9 @@ func (c *UDPConn) Call(_ string, req interface{}, resp interface{}) error {
 
 	// 接收响应
 	buf := make([]byte, 65535)
-	c.conn.SetReadDeadline(time.Now().Add(5 * time.Second)) // 设置超时
+	if err := c.conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil { // 设置超时
+		return err
+	}
 	n, _, err := c.conn.ReadFromUDP(buf)
 	if err != nil {
 		return err

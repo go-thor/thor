@@ -103,7 +103,9 @@ func (c *WebSocketConn) Call(_ string, req interface{}, resp interface{}) error 
 	}
 
 	// 接收响应
-	c.conn.SetReadDeadline(time.Now().Add(5 * time.Second)) // 设置超时
+	if err := c.conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil { // 设置超时
+		return err
+	}
 	_, respData, err := c.conn.ReadMessage()
 	if err != nil {
 		return err
