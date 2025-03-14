@@ -9,7 +9,7 @@ import (
 // RPCContext 封装请求上下文
 type RPCContext struct {
 	Ctx      context.Context
-	Request  interface{}
+	Request  *Request
 	Response interface{}
 	Metadata map[string]string
 }

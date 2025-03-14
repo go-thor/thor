@@ -62,22 +62,17 @@ func (s *Server) Serve(addr string) error {
 }
 
 func (s *Server) handleRequest(ctx *RPCContext) error {
-	req, ok := ctx.Request.(*Request)
-	if !ok {
-		return fmt.Errorf("invalid request format: expected rpcframework.Request, got %T: %#v", ctx.Request, ctx.Request)
-	}
-
-	route := fmt.Sprintf("%s.%s", req.ServiceName, req.MethodName)
+	route := fmt.Sprintf("%s.%s", ctx.Request.ServiceName, ctx.Request.MethodName)
 	s.mu.RLock()
 	method, exists := s.methods[route]
-	service, svcExists := s.services[req.ServiceName]
+	service, svcExists := s.services[ctx.Request.ServiceName]
 	s.mu.RUnlock()
 
 	if !exists || !svcExists {
 		return fmt.Errorf("route %s not found", route)
 	}
 
-	args := []reflect.Value{service, reflect.ValueOf(ctx.Ctx), reflect.ValueOf(req.Params)}
+	args := []reflect.Value{service, reflect.ValueOf(ctx.Ctx), reflect.ValueOf(ctx.Request.Params)}
 	results := method.Func.Call(args)
 	ctx.Response = results[0].Interface()
 	if !results[1].IsNil() {
