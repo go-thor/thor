@@ -24,6 +24,9 @@ var (
 	ErrTimeout          = New(ErrorCodeTimeout, "timeout")
 	ErrCancelled        = New(ErrorCodeCancelled, "cancelled")
 	ErrDeadlineExceeded = New(ErrorCodeDeadlineExceeded, "deadline exceeded")
+	ErrClientClosed     = New(ErrorCodeUnknown, "client closed")
+	ErrServiceNotFound  = New(ErrorCodeNotFound, "service not found")
+	ErrMethodNotFound   = New(ErrorCodeNotFound, "method not found")
 )
 
 // Error represents an error with additional context
@@ -110,9 +113,3 @@ func Cause(err error) error {
 	}
 	return nil
 }
-
-var (
-	ErrClientClosed    = errors.New("client closed")
-	ErrServiceNotFound = errors.New("service not found")
-	ErrMethodNotFound  = errors.New("method not found")
-)

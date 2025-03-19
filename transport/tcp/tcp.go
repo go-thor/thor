@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-thor/thor/pkg"
-	"github.com/go-thor/thor/pkg/errors"
+	"github.com/go-thor/thor"
+	"github.com/go-thor/thor/errors"
 )
 
 const (
@@ -342,5 +342,5 @@ func (t *Transport) Name() string {
 	return "tcp"
 }
 
-// Make sure Transport implements pkg.Transport
-var _ pkg.Transport = (*Transport)(nil)
+// Make sure Transport implements thor.Transport
+var _ thor.Transport = (*Transport)(nil)

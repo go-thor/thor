@@ -1,4 +1,4 @@
-package pkg
+package thor
 
 import (
 	"context"
@@ -13,6 +13,8 @@ type Request struct {
 	Metadata map[string]string
 	// Payload contains the actual data of the request
 	Payload []byte
+	// Args contains the argument data
+	Args []byte
 	// Seq is the sequence number of the request
 	Seq uint64
 }
@@ -25,6 +27,8 @@ type Response struct {
 	Metadata map[string]string
 	// Payload contains the actual data of the response
 	Payload []byte
+	// Reply contains the reply data
+	Reply []byte
 	// Error contains the error message if the call fails
 	Error string
 	// Seq is the sequence number of the request, used to match the response
@@ -120,7 +124,7 @@ type MethodDesc struct {
 }
 
 // Middleware defines a function that can be used as middleware
-type Middleware func(Handler) Handler
+type Middleware func(ctx context.Context, req *Request, next func(ctx context.Context, req *Request) (*Response, error)) (*Response, error)
 
 // Handler defines the handler function for middleware
 type Handler func(ctx context.Context, req interface{}) (interface{}, error)

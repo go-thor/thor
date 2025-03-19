@@ -20,7 +20,7 @@ package {{ .Package }}
 import (
 	"context"
 
-	"github.com/go-thor/thor/pkg"
+	"github.com/go-thor/thor"
 )
 `))
 

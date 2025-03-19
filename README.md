@@ -60,7 +60,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/go-thor/thor/pkg"
+	"github.com/go-thor/thor"
 	"github.com/go-thor/thor/codec/protobuf"
 	"github.com/go-thor/thor/transport/tcp"
 	"github.com/example/service"
@@ -105,7 +105,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/go-thor/thor/pkg"
+	"github.com/go-thor/thor"
 	"github.com/go-thor/thor/codec/protobuf"
 	"github.com/go-thor/thor/transport/tcp"
 	"github.com/example/service"
@@ -279,7 +279,7 @@ balancer := round_robin.New()
 Thor provides a robust error handling system for dealing with various types of errors.
 
 ```go
-import "github.com/go-thor/thor/pkg/errors"
+import "github.com/go-thor/thor/errors"
 
 // Check error type
 if errors.Is(err, errors.ErrTimeout) {

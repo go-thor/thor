@@ -1,8 +1,7 @@
-package pkg
+package thor
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"reflect"
@@ -10,8 +9,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	errors2 "github.com/go-thor/thor/pkg/errors"
-	"github.com/go-thor/thor/pkg/jsoncodec"
+	"github.com/go-thor/thor/errors"
+	"github.com/go-thor/thor/jsoncodec"
 )
 
 // service is a registered service
@@ -63,13 +62,13 @@ func (s *DefaultServer) register(svc interface{}, name string) error {
 	defer s.mu.Unlock()
 
 	if s.closed {
-		return errors2.ErrServerClosed
+		return errors.ErrServerClosed
 	}
 
 	// Check if service is valid
 	serviceValue := reflect.ValueOf(svc)
 	if serviceValue.Kind() != reflect.Ptr || serviceValue.IsNil() {
-		return errors.New("service must be a non-nil pointer")
+		return errors.New(errors.ErrorCodeInvalidArgument, "service must be a non-nil pointer")
 	}
 
 	// Get service type
@@ -79,7 +78,7 @@ func (s *DefaultServer) register(svc interface{}, name string) error {
 		serviceName = reflect.Indirect(serviceValue).Type().Name()
 	}
 	if serviceName == "" {
-		return errors.New("service name cannot be empty")
+		return errors.New(errors.ErrorCodeInvalidArgument, "service name cannot be empty")
 	}
 
 	// Check if service name is valid
@@ -164,7 +163,7 @@ func (s *DefaultServer) Serve() error {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		return errors2.ErrServerClosed
+		return errors.ErrServerClosed
 	}
 	s.mu.Unlock()
 
@@ -217,6 +216,15 @@ func (s *DefaultServer) Serve() error {
 		}
 
 		log.Printf("处理完成，响应: %+v", resp)
+		log.Printf("响应中的Reply数据长度: %d", len(resp.Reply))
+		log.Printf("响应中的Payload数据长度: %d", len(resp.Payload))
+
+		// 确保Response中的Payload和Reply字段已正确设置
+		if len(resp.Reply) == 0 && len(resp.Payload) > 0 {
+			resp.Reply = resp.Payload
+		} else if len(resp.Payload) == 0 && len(resp.Reply) > 0 {
+			resp.Payload = resp.Reply
+		}
 
 		// Marshal response
 		respData, err := jsonCodec.Marshal(resp)
@@ -238,7 +246,7 @@ func (s *DefaultServer) Stop() error {
 	defer s.mu.Unlock()
 
 	if s.closed {
-		return errors2.ErrServerClosed
+		return errors.ErrServerClosed
 	}
 
 	s.closed = true
@@ -252,102 +260,91 @@ func (s *DefaultServer) Use(middleware ...Middleware) {
 
 // handleRequest handles a request
 func (s *DefaultServer) handleRequest(ctx context.Context, req *Request) (*Response, error) {
-	// Create response
-	resp := &Response{
-		ServiceMethod: req.ServiceMethod,
-		Seq:           req.Seq,
-		Metadata:      req.Metadata,
-	}
-
-	log.Printf("处理请求: %s, 序列号: %d", req.ServiceMethod, req.Seq)
-
-	// Parse service and method
-	serviceName, methodName, err := parseServiceMethod(req.ServiceMethod)
-	if err != nil {
-		resp.Error = err.Error()
-		log.Printf("解析服务方法失败: %v", err)
-		return resp, nil
-	}
-
-	log.Printf("服务名: %s, 方法名: %s", serviceName, methodName)
-
-	// Get service
-	svcI, ok := s.serviceMap.Load(serviceName)
-	if !ok {
-		resp.Error = errors2.ErrServiceNotFound.Error()
-		log.Printf("找不到服务: %s", serviceName)
-		return resp, nil
-	}
-	svcObj := svcI.(*service)
-
-	// Get method
-	methodType, ok := svcObj.method[methodName]
-	if !ok {
-		resp.Error = errors2.ErrMethodNotFound.Error()
-		log.Printf("找不到方法: %s", methodName)
-		return resp, nil
-	}
-
-	// Create arguments
-	argv := reflect.New(methodType.ArgType.Elem())
-
-	// Unmarshal payload into arguments
-	err = s.codec.Unmarshal(req.Payload, argv.Interface())
-	if err != nil {
-		resp.Error = fmt.Sprintf("unmarshal argument: %v", err)
-		log.Printf("反序列化参数失败: %v", err)
-		return resp, nil
-	}
-
-	log.Printf("参数: %+v", argv.Interface())
-
-	// Create handler for middleware chain
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		// Call service method
-		returnValues := methodType.method.Func.Call([]reflect.Value{
-			svcObj.rcvr,
-			reflect.ValueOf(ctx),
-			reflect.ValueOf(req),
-		})
-
-		// Check for error
-		errInter := returnValues[1].Interface()
-		if errInter != nil {
-			return nil, errInter.(error)
+	// Apply middlewares
+	var handler = func(ctx context.Context, req *Request) (*Response, error) {
+		serviceName, methodName, err := parseServiceMethod(req.ServiceMethod)
+		if err != nil {
+			return nil, err
 		}
 
-		return returnValues[0].Interface(), nil
-	}
+		// Get service
+		svcInterface, ok := s.serviceMap.Load(serviceName)
+		if !ok {
+			return nil, errors.ErrServiceNotFound
+		}
+		svc := svcInterface.(*service)
 
-	// Apply middlewares
-	for i := len(s.middlewares) - 1; i >= 0; i-- {
-		handler = s.middlewares[i](handler)
-	}
+		// Get method
+		methodType, ok := svc.method[methodName]
+		if !ok {
+			return nil, errors.ErrMethodNotFound
+		}
 
-	// Call handler
-	reply, err := handler(ctx, argv.Interface())
-	if err != nil {
-		resp.Error = err.Error()
-		log.Printf("调用处理器失败: %v", err)
+		// Create argument and reply
+		argv := reflect.New(methodType.ArgType.Elem()).Interface()
+		replyv := reflect.New(methodType.ReplyType.Elem()).Interface()
+
+		// 如果Args为空但Payload不为空，使用Payload作为Args
+		if len(req.Args) == 0 && len(req.Payload) > 0 {
+			req.Args = req.Payload
+		}
+
+		// Unmarshal argument
+		err = s.codec.Unmarshal(req.Args, argv)
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal args: %w", err)
+		}
+
+		// Call method
+		err = s.call(ctx, svc, methodType, argv, replyv)
+		if err != nil {
+			return nil, err
+		}
+
+		// Marshal reply
+		log.Printf("服务端得到的响应对象: %+v", replyv)
+		replyData, err := s.codec.Marshal(replyv)
+		if err != nil {
+			return nil, fmt.Errorf("marshal reply: %w", err)
+		}
+		log.Printf("服务端序列化的响应数据长度: %d", len(replyData))
+		log.Printf("服务端序列化的响应数据内容: %v", replyData)
+
+		resp := &Response{
+			ServiceMethod: req.ServiceMethod,
+			Seq:           req.Seq,
+			Reply:         replyData,
+			Payload:       replyData,
+		}
+		log.Printf("服务端构造的响应: %+v", resp)
 		return resp, nil
 	}
 
-	log.Printf("响应: %+v", reply)
-
-	// Marshal reply
-	resp.Payload, err = s.codec.Marshal(reply)
-	if err != nil {
-		resp.Error = fmt.Sprintf("marshal reply: %v", err)
-		log.Printf("序列化响应失败: %v", err)
-		return resp, nil
-	}
-
-	log.Printf("响应负载长度: %d", len(resp.Payload))
-
-	return resp, nil
+	// 暂时不使用中间件，直接返回处理结果
+	// 实际项目中需要根据具体的Middleware定义来实现这部分逻辑
+	return handler(ctx, req)
 }
 
-// parseServiceMethod parses a service method string
+// call calls the service method
+func (s *DefaultServer) call(ctx context.Context, svc *service, methodType *methodType, argv, replyv interface{}) error {
+	function := methodType.method.Func
+	// Invoke the method, providing a new value for the reply
+	returnValues := function.Call([]reflect.Value{
+		svc.rcvr,
+		reflect.ValueOf(ctx),
+		reflect.ValueOf(argv),
+	})
+
+	// The return value for the method is an error
+	errInter := returnValues[1].Interface()
+	if errInter != nil {
+		return errInter.(error)
+	}
+
+	return nil
+}
+
+// parseServiceMethod parses a service method string in the format "Service.Method"
 func parseServiceMethod(serviceMethod string) (string, string, error) {
 	dot := 0
 	for i := 0; i < len(serviceMethod); i++ {
@@ -357,13 +354,15 @@ func parseServiceMethod(serviceMethod string) (string, string, error) {
 		}
 	}
 	if dot == 0 {
-		return "", "", errors.New("rpc: service/method request ill-formed: " + serviceMethod)
+		return "", "", errors.New(errors.ErrorCodeInvalidArgument, "rpc: service/method request ill-formed: "+serviceMethod)
 	}
-	return serviceMethod[:dot], serviceMethod[dot+1:], nil
+	serviceName := serviceMethod[:dot]
+	methodName := serviceMethod[dot+1:]
+	return serviceName, methodName, nil
 }
 
-// isExported returns true if the name is exported
+// isExported reports whether name is an exported name
 func isExported(name string) bool {
-	rune, _ := utf8.DecodeRuneInString(name)
-	return unicode.IsUpper(rune)
+	ch, _ := utf8.DecodeRuneInString(name)
+	return unicode.IsUpper(ch)
 }

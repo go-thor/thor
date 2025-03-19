@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-thor/thor/pkg"
-	"github.com/go-thor/thor/pkg/errors"
+	"github.com/go-thor/thor"
+	"github.com/go-thor/thor/errors"
 )
 
 const (
