@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/go-thor/thor/examples/protobuf_protocol/proto";
+
+// Metadata 定义元数据消息
+message Metadata {
+  map<string, string> data = 1;
+}
+
+// UserRequest 定义用户请求
+message UserRequest {
+  int32 id = 1;
+  string username = 2;
+  string email = 3;
+  string create_at = 4; // 格式：RFC3339
+  repeated string tags = 5;
+  bool active = 6;
+}
+
+// UserResponse 定义用户响应
+message UserResponse {
+  int32 id = 1;
+  string username = 2;
+  string email = 3;
+  string create_at = 4; // 格式：RFC3339
+  string updated_at = 5; // 格式：RFC3339
+  repeated string tags = 6;
+  bool active = 7;
+  map<string, string> properties = 8;
+  string message = 9;
+}

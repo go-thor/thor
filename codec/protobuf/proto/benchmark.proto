@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/go-thor/thor/codec/protobuf/proto";
+
+// BenchmarkData 是用于性能基准测试的数据结构
+message BenchmarkData {
+  int32 id = 1;
+  string name = 2;
+  string email = 3;
+  string created_at = 4;
+  string updated_at = 5;
+  bool active = 6;
+  double score = 7;
+  repeated string tags = 8;
+  map<string, string> metadata = 9;
+}
