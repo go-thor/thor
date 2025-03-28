@@ -26,6 +26,7 @@ const (
 	EncodingJSON     uint8 = 0x01 // JSON
 	EncodingProtobuf uint8 = 0x02 // Protobuf
 	EncodingMsgpack  uint8 = 0x03 // MessagePack
+	EncodingSonic    uint8 = 0x04 // Sonic
 )
 
 // Codec 是二进制编解码器
@@ -462,6 +463,8 @@ func getEncodingType(codec thor.Codec) uint8 {
 		return EncodingProtobuf
 	case strings.Contains(name, "msgpack"):
 		return EncodingMsgpack
+	case strings.Contains(name, "sonic"):
+		return EncodingSonic
 	default:
 		return EncodingRaw
 	}
