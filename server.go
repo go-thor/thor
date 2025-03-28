@@ -10,7 +10,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-thor/thor/errors"
-	"github.com/go-thor/thor/jsoncodec"
 )
 
 // service is a registered service
@@ -167,20 +166,17 @@ func (s *DefaultServer) Serve() error {
 	}
 	s.mu.Unlock()
 
-	// 创建 JSON 编解码器用于内部消息
-	jsonCodec := jsoncodec.New()
-
 	handler := func(ctx context.Context, message []byte) ([]byte, error) {
 		// Unmarshal request
 		var req Request
 		log.Printf("收到消息，长度: %d", len(message))
-		err := jsonCodec.Unmarshal(message, &req)
+		err := s.codec.Unmarshal(message, &req)
 		if err != nil {
 			log.Printf("反序列化请求失败: %v", err)
 			resp := &Response{
 				Error: fmt.Sprintf("unmarshal request: %v", err),
 			}
-			respData, err := jsonCodec.Marshal(resp)
+			respData, err := s.codec.Marshal(resp)
 			if err != nil {
 				log.Printf("序列化错误响应失败: %v", err)
 				return nil, err
@@ -207,7 +203,7 @@ func (s *DefaultServer) Serve() error {
 				Seq:           req.Seq,
 				Error:         err.Error(),
 			}
-			respData, err := jsonCodec.Marshal(resp)
+			respData, err := s.codec.Marshal(resp)
 			if err != nil {
 				log.Printf("序列化错误响应失败: %v", err)
 				return nil, err
@@ -227,7 +223,7 @@ func (s *DefaultServer) Serve() error {
 		}
 
 		// Marshal response
-		respData, err := jsonCodec.Marshal(resp)
+		respData, err := s.codec.Marshal(resp)
 		if err != nil {
 			log.Printf("序列化响应失败: %v", err)
 			return nil, err
@@ -301,20 +297,23 @@ func (s *DefaultServer) handleRequest(ctx context.Context, req *Request) (*Respo
 			return nil, err
 		}
 
-		// Marshal reply
-		log.Printf("服务端得到的响应对象: %+v", replyv)
-		replyData, err := s.codec.Marshal(replyv)
-		if err != nil {
-			return nil, fmt.Errorf("marshal reply: %w", err)
-		}
-		log.Printf("服务端序列化的响应数据长度: %d", len(replyData))
-		log.Printf("服务端序列化的响应数据内容: %v", replyData)
+		// 打印服务方法返回的响应对象
+		log.Printf("服务方法返回的响应对象: %+v", replyv)
 
+		// 使用 inner codec 序列化响应对象
+		innerReplyData, err := s.codec.Marshal(replyv)
+		if err != nil {
+			return nil, fmt.Errorf("marshal inner reply: %w", err)
+		}
+		log.Printf("使用 inner codec 序列化的响应数据长度: %d", len(innerReplyData))
+		log.Printf("使用 inner codec 序列化的响应数据内容: %v", innerReplyData)
+
+		// 构造响应
 		resp := &Response{
 			ServiceMethod: req.ServiceMethod,
 			Seq:           req.Seq,
-			Reply:         replyData,
-			Payload:       replyData,
+			Reply:         innerReplyData,
+			Payload:       innerReplyData,
 		}
 		log.Printf("服务端构造的响应: %+v", resp)
 		return resp, nil
@@ -334,6 +333,16 @@ func (s *DefaultServer) call(ctx context.Context, svc *service, methodType *meth
 		reflect.ValueOf(ctx),
 		reflect.ValueOf(argv),
 	})
+
+	// 获取返回的响应对象
+	returnReply := returnValues[0].Interface()
+	returnReplyValue := reflect.ValueOf(returnReply)
+	replyValue := reflect.ValueOf(replyv)
+
+	// 使用返回的响应对象更新 replyv
+	if returnReplyValue.Type().Elem().AssignableTo(replyValue.Type().Elem()) {
+		replyValue.Elem().Set(returnReplyValue.Elem())
+	}
 
 	// The return value for the method is an error
 	errInter := returnValues[1].Interface()

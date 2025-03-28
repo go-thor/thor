@@ -28,10 +28,20 @@ type EchoResponse struct {
 // 实现服务方法
 func (s *EchoService) Echo(ctx context.Context, req *EchoRequest) (*EchoResponse, error) {
 	log.Printf("收到请求: %s", req.Message)
-	return &EchoResponse{
+
+	// 打印请求对象的详细信息
+	log.Printf("请求对象详情: %+v", req)
+
+	// 创建响应对象
+	resp := &EchoResponse{
 		Message: "Echo: " + req.Message,
 		Time:    time.Now(),
-	}, nil
+	}
+
+	// 打印响应对象的详细信息
+	log.Printf("发送响应: %+v", resp)
+
+	return resp, nil
 }
 
 func main() {

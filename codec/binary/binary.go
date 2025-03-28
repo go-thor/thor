@@ -91,7 +91,7 @@ func (c *Codec) Marshal(v interface{}) ([]byte, error) {
 			return nil, fmt.Errorf("write message type: %w", err)
 		}
 
-		// 4. 编码类型 (1 byte) - 暂时固定为 EncodingRaw
+		// 4. 编码类型 (1 byte)
 		if err := binary.Write(&buf, binary.BigEndian, getEncodingType(c.innerCodec)); err != nil {
 			return nil, fmt.Errorf("write encoding type: %w", err)
 		}
@@ -137,6 +137,12 @@ func (c *Codec) Marshal(v interface{}) ([]byte, error) {
 			payloadBytes = msg.Payload
 		} else if len(msg.Args) > 0 {
 			payloadBytes = msg.Args
+		} else if msg.Args != nil {
+			var err error
+			payloadBytes, err = c.innerCodec.Marshal(msg.Args)
+			if err != nil {
+				return nil, fmt.Errorf("marshal args: %w", err)
+			}
 		}
 
 		// 9.1 负载长度 (4 bytes)
@@ -211,6 +217,12 @@ func (c *Codec) Marshal(v interface{}) ([]byte, error) {
 			payloadBytes = msg.Payload
 		} else if len(msg.Reply) > 0 {
 			payloadBytes = msg.Reply
+		} else if msg.Reply != nil {
+			var err error
+			payloadBytes, err = c.innerCodec.Marshal(msg.Reply)
+			if err != nil {
+				return nil, fmt.Errorf("marshal reply: %w", err)
+			}
 		}
 
 		// 11.1 负载长度 (4 bytes)
@@ -225,7 +237,45 @@ func (c *Codec) Marshal(v interface{}) ([]byte, error) {
 
 	default:
 		// 对于其他类型，使用内部编解码器序列化
-		return c.innerCodec.Marshal(v)
+		payloadBytes, err := c.innerCodec.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("marshal payload: %w", err)
+		}
+
+		// 3. 消息类型 (1 byte) - 请求
+		if err := binary.Write(&buf, binary.BigEndian, TypeRequest); err != nil {
+			return nil, fmt.Errorf("write message type: %w", err)
+		}
+
+		// 4. 编码类型 (1 byte)
+		if err := binary.Write(&buf, binary.BigEndian, getEncodingType(c.innerCodec)); err != nil {
+			return nil, fmt.Errorf("write encoding type: %w", err)
+		}
+
+		// 5. 序列号 (8 bytes)
+		if err := binary.Write(&buf, binary.BigEndian, uint64(0)); err != nil {
+			return nil, fmt.Errorf("write sequence: %w", err)
+		}
+
+		// 6. 服务方法名长度 (1 byte)
+		if err := binary.Write(&buf, binary.BigEndian, uint8(0)); err != nil {
+			return nil, fmt.Errorf("write service method length: %w", err)
+		}
+
+		// 7. 元数据长度 (4 bytes)
+		if err := binary.Write(&buf, binary.BigEndian, uint32(0)); err != nil {
+			return nil, fmt.Errorf("write metadata length: %w", err)
+		}
+
+		// 8. 负载长度 (4 bytes)
+		if err := binary.Write(&buf, binary.BigEndian, uint32(len(payloadBytes))); err != nil {
+			return nil, fmt.Errorf("write payload length: %w", err)
+		}
+
+		// 9. 负载内容 (变长)
+		if _, err := buf.Write(payloadBytes); err != nil {
+			return nil, fmt.Errorf("write payload: %w", err)
+		}
 	}
 
 	return buf.Bytes(), nil
@@ -307,13 +357,8 @@ func (c *Codec) Unmarshal(data []byte, v interface{}) error {
 		}
 	}
 
-	switch msgType {
-	case TypeRequest:
-		req, ok := v.(*thor.Request)
-		if !ok {
-			return fmt.Errorf("expected *thor.Request, got %T", v)
-		}
-
+	switch msg := v.(type) {
+	case *thor.Request:
 		// 10. 读取负载长度 (4 bytes)
 		var payloadLen uint32
 		if err := binary.Read(buf, binary.BigEndian, &payloadLen); err != nil {
@@ -327,18 +372,19 @@ func (c *Codec) Unmarshal(data []byte, v interface{}) error {
 		}
 
 		// 填充请求对象
-		req.ServiceMethod = serviceMethod
-		req.Metadata = metadata
-		req.Seq = seq
-		req.Payload = payload
-		req.Args = payload // 同时设置 Args 和 Payload 确保兼容性
+		msg.ServiceMethod = serviceMethod
+		msg.Metadata = metadata
+		msg.Seq = seq
+		msg.Payload = payload
 
-	case TypeResponse:
-		resp, ok := v.(*thor.Response)
-		if !ok {
-			return fmt.Errorf("expected *thor.Response, got %T", v)
+		// 如果 Args 不为 nil，尝试反序列化负载
+		if msg.Args != nil {
+			if err := c.innerCodec.Unmarshal(payload, msg.Args); err != nil {
+				return fmt.Errorf("unmarshal args: %w", err)
+			}
 		}
 
+	case *thor.Response:
 		// 10. 读取错误信息长度 (2 bytes)
 		var errorLen uint16
 		if err := binary.Read(buf, binary.BigEndian, &errorLen); err != nil {
@@ -365,15 +411,37 @@ func (c *Codec) Unmarshal(data []byte, v interface{}) error {
 		}
 
 		// 填充响应对象
-		resp.ServiceMethod = serviceMethod
-		resp.Metadata = metadata
-		resp.Seq = seq
-		resp.Error = errorMsg
-		resp.Payload = payload
-		resp.Reply = payload // 同时设置 Reply 和 Payload 确保兼容性
+		msg.ServiceMethod = serviceMethod
+		msg.Metadata = metadata
+		msg.Seq = seq
+		msg.Error = errorMsg
+		msg.Payload = payload
+
+		// 如果 Reply 不为 nil，尝试反序列化负载
+		if msg.Reply != nil {
+			if err := c.innerCodec.Unmarshal(payload, msg.Reply); err != nil {
+				return fmt.Errorf("unmarshal reply: %w", err)
+			}
+		}
 
 	default:
-		return fmt.Errorf("unsupported message type: %d", msgType)
+		// 对于其他类型，直接使用内部编解码器反序列化负载
+		// 10. 读取负载长度 (4 bytes)
+		var payloadLen uint32
+		if err := binary.Read(buf, binary.BigEndian, &payloadLen); err != nil {
+			return fmt.Errorf("read payload length: %w", err)
+		}
+
+		// 11. 读取负载 (变长)
+		payload := make([]byte, payloadLen)
+		if _, err := io.ReadFull(buf, payload); err != nil {
+			return fmt.Errorf("read payload: %w", err)
+		}
+
+		// 使用内部编解码器反序列化负载
+		if err := c.innerCodec.Unmarshal(payload, v); err != nil {
+			return fmt.Errorf("unmarshal payload: %w", err)
+		}
 	}
 
 	return nil

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-thor/thor/errors"
-	"github.com/go-thor/thor/jsoncodec"
 )
 
 // DefaultTimeout is the default timeout for client calls
@@ -130,9 +129,6 @@ func (c *DefaultClient) send(call *Call) {
 		return
 	}
 
-	// Create JSON codec for internal message
-	jsonCodec := jsoncodec.New()
-
 	// Create request
 	rpcReq := &Request{
 		ServiceMethod: call.ServiceMethod,
@@ -143,7 +139,7 @@ func (c *DefaultClient) send(call *Call) {
 	}
 
 	// Marshal the request
-	reqData, err = jsonCodec.Marshal(rpcReq)
+	reqData, err = c.codec.Marshal(rpcReq)
 	if err != nil {
 		c.mu.Lock()
 		call = c.pending[call.Seq]
@@ -210,9 +206,8 @@ func (c *DefaultClient) Close() error {
 func (c *DefaultClient) handleResponse(respData []byte, call *Call) {
 	// Unmarshal the response
 	var resp Response
-	jsonCodec := jsoncodec.New()
 	log.Printf("客户端收到的原始响应数据长度: %d", len(respData))
-	err := jsonCodec.Unmarshal(respData, &resp)
+	err := c.codec.Unmarshal(respData, &resp)
 	if err != nil {
 		c.mu.Lock()
 		call = c.pending[call.Seq]
@@ -230,7 +225,7 @@ func (c *DefaultClient) handleResponse(respData []byte, call *Call) {
 	if resp.Error != "" {
 		c.mu.Lock()
 		call = c.pending[resp.Seq]
-		delete(c.pending, resp.Seq)
+		delete(c.pending, call.Seq)
 		c.mu.Unlock()
 		if call != nil {
 			call.Error = errors.New(errors.ErrorCodeUnknown, resp.Error)
@@ -261,16 +256,13 @@ func (c *DefaultClient) handleResponse(respData []byte, call *Call) {
 	}
 	log.Printf("客户端最终的响应对象: %+v", call.Reply)
 
-	// Call is complete
+	// Remove the call from the pending map
 	c.mu.Lock()
-	pendingCall := c.pending[resp.Seq]
 	delete(c.pending, resp.Seq)
 	c.mu.Unlock()
 
-	// Finish the call
-	if pendingCall != nil {
-		c.finish(pendingCall)
-	}
+	// Call is complete
+	call.done()
 }
 
 // finish finishes the call
